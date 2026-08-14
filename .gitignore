@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual env
+venv314/
+.venv/
+venv/
+env/
+
+# PyInstaller
+dist/
+build/
+*.spec.bak
+
+# Single-file exe (built from source; attached to GitHub Release)
+*.exe
+!*.spec
+
+# Local app data (per-app, generated at runtime)
+export_locations.json
+config.json
+config.local.json
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+ehthumbs.db
+
+# Debug / scratch artifacts (underscore-prefixed dev-only files)
+_*.png
+_*.py
+
+# Local user overrides
+*.user
