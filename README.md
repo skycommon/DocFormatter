@@ -167,8 +167,8 @@ DocFormatter/
 ├── app_icon_simple.ico          # 应用图标（多尺寸）
 ├── icon_preview.png             # 图标预览
 ├── make_icon_simple.py          # 图标生成器
-├── make_desktop_shortcut.py     # 单版本桌面快捷方式生成器
-├── mk_desktop_shortcuts.py      # 多版本桌面快捷方式生成器（已收敛为单版本）
+├── make_desktop_shortcut.py     # 桌面快捷方式生成器
+├── mk_desktop_shortcuts.py      # 桌面快捷方式批量生成器
 ├── mk_two_lnk.py                # 旧版快捷方式工具
 ├── pdf_freeze_test.spec         # PyInstaller PDF 导出测试 spec
 ├── ref_demo_gb.docx             # GB/T 7714 参考文献样例
@@ -237,7 +237,7 @@ A: 不会。完全离线，所有处理在本地完成。
 - [ ] **LibreOffice headless 导出 PDF**（脱离 Word / WPS 依赖）
 - [ ] 自定义排版规则可视化编辑器
 - [ ] Pandoc / LaTeX 输入支持
-- [ ] 暗色 / 霓虹主题切换（已预留 theme.py 钩子）
+- [ ] 自定义主题 / 配色方案
 - [ ] 多窗口 / 多标签页
 - [ ] 撤销 / 重做
 
