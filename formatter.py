@@ -770,7 +770,7 @@ def build_docx(blocks: list[dict], out_path: str, preset_name: str = "默认",
             p = doc.add_heading(b["text"], level=b["level"])
         elif t == "hr":
             p = doc.add_paragraph()
-            p.add_run("—" * 18).font.color.rgb = RGBColor(0x99, 0x99, 0x99)
+            p.add_run("—" * 18).font.color.rgb = RGBColor(0x00, 0x00, 0x00)
         elif t == "list":
             style = "List Number" if b.get("ordered") else "List Bullet"
             for item in b["items"]:
@@ -787,7 +787,88 @@ def build_docx(blocks: list[dict], out_path: str, preset_name: str = "默认",
             p = doc.add_paragraph()
             add_rich(p, b["text"])
 
+    # 导出前强制全黑：标题/分隔线/目录条目/表格边框一律纯黑，不保留任何主题色
+    _force_all_black(doc)
     doc.save(out_path)
+
+
+def _force_all_black(doc):
+    """把整篇文档（正文 + 全部样式 part + 页眉页脚）的所有颜色强制为纯黑。
+
+    python-docx 默认模板里 Heading/Title/Subtitle/Caption 等样式带
+    蓝色系主题色（accent1/text2），只改字体字号时标题会导出成蓝色。
+    这里遍历包内所有 XML part 中的 w:color 元素：val 一律改 000000，
+    并删掉 themeColor/themeShade/themeTint 属性（主题色引用优先级高于
+    val，不删的话 Word 仍会按主题色渲染）。
+
+    注意除了 word/styles.xml，模板还带 word/stylesWithEffects.xml
+    （Word 实际读取的带特效样式副本），所以必须遍历包内全部 part，
+    不能只改 doc.styles。
+    """
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+
+    def _fix(root):
+        if root is None:
+            return
+        for el in root.iter():
+            if el.tag == qn("w:color"):
+                el.set(qn("w:val"), "000000")
+                for attr in ("w:themeColor", "w:themeShade", "w:themeTint"):
+                    if el.get(qn(attr)) is not None:
+                        del el.attrib[qn(attr)]
+
+    # 遍历包内所有 XML part：styles / document / 页眉页脚 / numbering 等；
+    # 二进制 part（图片）没有 _element，自动跳过
+    for part in doc.part.package.parts:
+        root = getattr(part, "_element", None)
+        if root is None:
+            root = getattr(part, "element", None)
+        try:
+            _fix(root)
+        except Exception:
+            pass
+
+    # word/stylesWithEffects.xml 被 python-docx 当普通二进制 Part 加载
+    # （无 _element），但 Word 打开文档时会优先读它——必须单独修字节流。
+    import re as _re
+    for part in doc.part.package.parts:
+        if "stylesWithEffects" not in str(part.partname):
+            continue
+        blob = getattr(part, "_blob", None)
+        if not blob:
+            continue
+        xml = blob.decode("utf-8")
+
+        def _sub_color(m):
+            tag = m.group(0)
+            tag = _re.sub(r'w:val="[^"]*"', 'w:val="000000"', tag)
+            tag = _re.sub(r'\s+w:theme(?:Color|Shade|Tint)="[^"]*"', "", tag)
+            return tag
+
+        xml = _re.sub(r"<w:color\b[^>]*/?>", _sub_color, xml)
+        part._blob = xml.encode("utf-8")
+
+    # Word 更新 TOC 域时条目套用 Hyperlink 字符样式（内置默认蓝色）。
+    # 模板里没有该样式就补一个黑色定义，保证目录条目也是黑色。
+    styles_el = doc.styles.element
+    has_hyperlink = any(
+        st.get(qn("w:styleId")) == "Hyperlink"
+        for st in styles_el.findall(qn("w:style"))
+    )
+    if not has_hyperlink:
+        st = OxmlElement("w:style")
+        st.set(qn("w:type"), "character")
+        st.set(qn("w:styleId"), "Hyperlink")
+        name = OxmlElement("w:name")
+        name.set(qn("w:val"), "Hyperlink")
+        st.append(name)
+        rPr = OxmlElement("w:rPr")
+        color = OxmlElement("w:color")
+        color.set(qn("w:val"), "000000")
+        rPr.append(color)
+        st.append(rPr)
+        styles_el.append(st)
 
 
 def _align_para(p, align):
@@ -813,7 +894,7 @@ def _set_table_borders(table):
         el.set(qn("w:val"), "single")
         el.set(qn("w:sz"), "4")
         el.set(qn("w:space"), "0")
-        el.set(qn("w:color"), "auto")
+        el.set(qn("w:color"), "000000")
         borders.append(el)
     tblPr.append(borders)
 

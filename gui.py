@@ -2,7 +2,7 @@
 """
 文档快速排版 —— Windows 桌面 GUI（tkinter，纯离线）
 功能：导入 TXT/Markdown 杂乱文本 -> 一键智能整理（标题/段落/列表/重点加粗）-> 导出规范 Word(.docx)
-支持：简体中文 / English 实时切换；亮色 / 暗色主题切换。
+支持：简体中文 / English 实时切换；导出文档全部内容纯黑色。
 """
 
 import os
@@ -215,18 +215,6 @@ class App:
         self.w_btn_export2 = ttk.Button(row_preset, text="", command=self.export_docx)
         self.w_btn_export2.pack(side="right", padx=2)
         self._tr.append((self.w_btn_export2, "btn_export"))
-
-        # 主题行
-        row_theme = ttk.Frame(opt)
-        row_theme.pack(anchor="w", padx=6, pady=3, fill="x")
-        self.w_lbl_theme = ttk.Label(row_theme, text="")
-        self.w_lbl_theme.pack(side="left")
-        self._tr.append((self.w_lbl_theme, "lbl_theme"))
-        self.theme_disp = tk.StringVar()
-        self.cb_theme = ttk.Combobox(row_theme, textvariable=self.theme_disp,
-                                     values=[], state="readonly", width=10)
-        self.cb_theme.pack(side="left", padx=4)
-        self.cb_theme.bind("<<ComboboxSelected>>", self.on_theme)
 
         # 语言行
         row_lang = ttk.Frame(opt)
@@ -478,10 +466,6 @@ class App:
         for w, key in self._tr:
             w.config(text=t(key, self.lang))
 
-        # 主题下拉
-        self.cb_theme.config(values=[t("theme_light", self.lang), t("theme_dark", self.lang)])
-        self.theme_disp.set(t("theme_" + self.theme_name, self.lang))
-
         # 语言下拉
         self.cb_lang.config(values=[t("lang_zh", self.lang), t("lang_en", self.lang)])
         self.lang_disp.set(t("lang_" + self.lang, self.lang))
@@ -533,11 +517,6 @@ class App:
         self.retranslate()
         self.refresh_outline()
         self.set_status(t("status_lang", self.lang).format(lang=t("lang_" + self.lang, self.lang)))
-
-    def on_theme(self, event=None):
-        self.theme_name = "light" if self.theme_disp.get() == t("theme_light", self.lang) else "dark"
-        self.apply_theme()
-        self.set_status(t("status_theme", self.lang).format(name=t("theme_" + self.theme_name, self.lang)))
 
     def on_preset(self, event=None):
         val = self.preset_disp.get()
@@ -600,8 +579,7 @@ class App:
         self._refresh_toggles()
 
     def _configure_preview_tags(self):
-        """配置预览 Text 的样式标签（随主题色 + 所选字体/字号刷新）。"""
-        th = THEMES[self.theme_name]
+        """配置预览 Text 的样式标签（与导出一致：全部内容纯黑色）。"""
         pv = self.preview
         # 套用用户在界面选择的字体与正文字号（所见即所得）
         bf = self.body_font_var.get() or "Microsoft YaHei"
@@ -612,29 +590,30 @@ class App:
         except Exception:
             bs = 11.0
         b = int(round(bs))  # tkinter 字号必须为整数
+        BLACK = "#000000"  # 导出全部黑色，预览同步全黑
         pv.tag_configure("title", font=(tf, b + 6, "bold"),
-                         foreground=th["fg"], spacing1=6, spacing3=8)
+                         foreground=BLACK, spacing1=6, spacing3=8)
         pv.tag_configure("h1", font=(hf, b + 4, "bold"),
-                         foreground=th["accent"], spacing1=6, spacing3=4)
+                         foreground=BLACK, spacing1=6, spacing3=4)
         pv.tag_configure("h2", font=(hf, b + 2, "bold"),
-                         foreground=th["accent"], spacing1=4, spacing3=3)
+                         foreground=BLACK, spacing1=4, spacing3=3)
         pv.tag_configure("h3", font=(hf, b + 1, "bold"),
-                         foreground=th["fg"], spacing1=3, spacing3=2)
-        pv.tag_configure("body", font=(bf, b), foreground=th["fg"],
+                         foreground=BLACK, spacing1=3, spacing3=2)
+        pv.tag_configure("body", font=(bf, b), foreground=BLACK,
                          spacing1=2, spacing3=4, lmargin1=4, lmargin2=4)
         pv.tag_configure("bold", font=(bf, b, "bold"),
-                         foreground=th["fg"])
+                         foreground=BLACK)
         pv.tag_configure("ital", font=(bf, b, "italic"),
-                         foreground=th["muted"])
-        pv.tag_configure("sup", font=(bf, max(6, b - 3)), foreground=th["muted"])
-        pv.tag_configure("list", font=(bf, b), foreground=th["fg"],
+                         foreground=BLACK)
+        pv.tag_configure("sup", font=(bf, max(6, b - 3)), foreground=BLACK)
+        pv.tag_configure("list", font=(bf, b), foreground=BLACK,
                          lmargin1=12, lmargin2=24, spacing1=1, spacing3=2)
-        pv.tag_configure("ref", font=(bf, b), foreground=th["fg"],
+        pv.tag_configure("ref", font=(bf, b), foreground=BLACK,
                          lmargin1=14, lmargin2=26, spacing1=1, spacing3=2)
-        pv.tag_configure("hr", font=(bf, b), foreground=th["muted"])
-        pv.tag_configure("mono", font=("Consolas", 10), foreground=th["fg"])
+        pv.tag_configure("hr", font=(bf, b), foreground=BLACK)
+        pv.tag_configure("mono", font=("Consolas", 10), foreground=BLACK)
         pv.tag_configure("monohead", font=("Consolas", 10, "bold"),
-                         foreground=th["accent"])
+                         foreground=BLACK)
         pv.tag_configure("center", justify="center")
 
     # ------------------------------------------------------------ 功能
@@ -945,7 +924,6 @@ class App:
                 "footer_text": self.footer_text_var.get(),
                 "western_font": self.latin_font_var.get(),
                 "preset": self.preset_key,
-                "theme": self.theme_name,
                 "language": self.lang,
                 "export_locations": [dict(x) for x in self.export_locations],
             },
@@ -1037,9 +1015,6 @@ class App:
         if "western_font" in cfg and cfg["western_font"] in WESTERN_FONT_OPTIONS:
             self.latin_font_var.set(str(cfg["western_font"]))
             self._save_western_font()
-        theme = cfg.get("theme", self.theme_name)
-        if theme in ("light", "dark"):
-            self.theme_name = theme
         lang = cfg.get("language", self.lang)
         if lang in ("zh", "en"):
             self.lang = lang
