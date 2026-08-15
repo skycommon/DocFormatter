@@ -5,6 +5,18 @@ All notable changes to DocFormatter are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-08-15
+
+### Changed · 导出强制纯黑
+
+- **所有导出内容一律纯黑**：标题（Heading/Title）、正文、分隔线、表格边框、目录条目全部强制 `000000`，清除模板内置的蓝色主题色引用（accent1/text2）
+- 补齐黑色 `Hyperlink` 字符样式，目录域更新后条目不再变蓝
+
+### Removed
+
+- 移除界面「主题（亮色/暗色）」下拉及其相关文案、配置持久化；界面固定浅色
+- 移除残留的 `cool_sub` 死键
+
 ## [1.0.0] - 2026-08-15
 
 ### Added · 首发版本

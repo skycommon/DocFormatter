@@ -119,9 +119,8 @@ STRINGS = {
         "info_done": "完成",
         "info_done_msg": "已导出：\n{path}\n共 {n} 个结构块。",
         "about_title": "关于",
-        "cool_sub": "离线启发式排版 · 杂乱文本一键成稿",
         "about_text": (
-            "文档快速排版 v1.0.0\n\n"
+            "文档快速排版 v1.0.1\n\n"
             "纯离线启发式排版工具：\n"
             "杂乱文本 / TXT / Markdown -> 一键整理标题、段落、列表、表格、公式、引用标注、参考文献、重点加粗 -> 规范 Word(.docx)\n\n"
             "支持：页眉页脚与自动页码、实时预览、批量处理、导出 PDF。\n"
@@ -282,9 +281,8 @@ STRINGS = {
         "info_done": "Done",
         "info_done_msg": "Exported:\n{path}\nTotal {n} blocks.",
         "about_title": "About",
-        "cool_sub": "Offline heuristic formatting - messy text to clean docs in one click",
         "about_text": (
-            "Doc Formatter v1.0.0\n\n"
+            "Doc Formatter v1.0.1\n\n"
             "A fully offline, heuristic document formatter:\n"
             "Messy text / TXT / Markdown -> one-click headings, paragraphs,\n"
             "lists, tables, formulas, citations, references, key-term bolding -> clean Word(.docx)\n\n"
