@@ -6,6 +6,10 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+# 仅构建 + 上传 artifact；release 由 token 通过 API 手动创建（描述完全可控，避免与自动发版冲突）
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: windows-latest
@@ -48,12 +52,3 @@ jobs:
           name: DocFormatter-${{ github.ref_name }}
           path: dist/DocFormatter.exe
           if-no-files-found: error
-
-      - name: Create GitHub Release (on tag)
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            dist/DocFormatter.exe
-          generate_release_notes: true
-          fail_on_unmatched_files: true

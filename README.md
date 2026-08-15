@@ -155,7 +155,7 @@ python -m venv venv314
 DocFormatter/
 ├── .github/
 │   └── workflows/
-│       └── build-windows.yml    # Windows CI（构建 + 自动发版）
+│       └── build-windows.yml    # Windows CI（构建 exe + 上传 artifact）
 ├── docs/
 │   └── screenshot-main.png      # README 主截图
 ├── gui.py                       # 主 GUI（tkinter，~66 KB）
