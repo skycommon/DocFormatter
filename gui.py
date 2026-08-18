@@ -8,6 +8,7 @@
 import os
 import json
 import threading
+import queue
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -1215,7 +1216,7 @@ class App:
         self.batch_folder = ""
         self.batch_output = ""
         self._batch_running = False
-        self._batch_log_q = []
+        self._batch_log_q = queue.Queue()
         self._batch_files = []
         self._batch_ok = self._batch_fail = self._batch_done = self._batch_total = 0
 
@@ -1355,18 +1356,21 @@ class App:
                     title_font=self.title_font_var.get(),
                     body_size=size_pt(self.body_size_var.get()),
                     latin_font=self.latin_font_var.get())
-                self._batch_log_q.append(("ok", fpath, ""))
+                self._batch_log_q.put(("ok", fpath, ""))
                 self._batch_ok += 1
             except Exception as e:
-                self._batch_log_q.append(("fail", fpath, str(e)))
+                self._batch_log_q.put(("fail", fpath, str(e)))
                 self._batch_fail += 1
             self._batch_done = i + 1
         self._batch_running = False
 
     def _batch_poll(self):
         if hasattr(self, "_batch_log_q"):
-            while self._batch_log_q:
-                kind, fpath, err = self._batch_log_q.pop(0)
+            while True:
+                try:
+                    kind, fpath, err = self._batch_log_q.get_nowait()
+                except queue.Empty:
+                    break
                 name = os.path.basename(fpath)
                 if kind == "ok":
                     self._batch_log_write(t("batch_log_ok", self.lang).format(name=name))

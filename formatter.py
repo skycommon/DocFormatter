@@ -340,12 +340,18 @@ def _looks_like_heading(line: str, smart: bool, next_line: str) -> tuple[bool, i
     # 3) 智能识别：短行、无句末标点，且下一行明显更长（像正文）
     if smart:
         stripped = line.strip()
-        if (len(stripped) <= 18
-                and not stripped[-1] in WEAK_END
+        # 典型「导语 + 长正文」结构（如「本文贡献」「研究结论」「我们的方法」）
+        # 容易被误判为标题，这里用前缀黑名单 + 更严格的倍率来保守处理。
+        NON_TITLE_HINTS = ("本文", "我们", "研究", "实验", "方法", "结果",
+                           "结论", "分析", "讨论", "综述", "基于", "针对",
+                           "关于", "通过", "引言", "提出", "设计")
+        if (len(stripped) <= 16
+                and stripped[-1] not in WEAK_END
+                and not stripped.startswith(NON_TITLE_HINTS)
                 and not BULLET_RE.match(line)
                 and not ORDERED_RE.match(line)):
             nxt = next_line.strip()
-            if nxt and len(nxt) >= 2 * len(stripped) and len(nxt) >= 12:
+            if nxt and len(nxt) >= 3 * len(stripped) and len(nxt) >= 16:
                 return (True, 2)
     return (False, 0)
 

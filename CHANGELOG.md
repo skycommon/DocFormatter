@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **预览所见即所得**：切换字体 / 字号 / 预设后，右侧预览立即刷新，不再停留在旧字体
 - **移除冗余按钮**：删除与「导出 Word」功能重复的「一键排版导出」按钮
 - **补齐 `--version`**：命令行 `DocFormatter.exe --version` 可查看版本（此前仅为文档承诺）
+- **批量日志线程安全**：后台线程与界面轮询改用 `queue.Queue` 替代裸 list，消除跨线程并发隐患
+- **智能标题识别更保守**：智能模式下排除「本文 / 我们 / 研究 / 实验 / 结论」等导语前缀，避免「本文贡献」「研究结论」被误判为标题
 
 ### Changed
 
