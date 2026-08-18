@@ -59,9 +59,18 @@ TABLE_SEP_CELL_RE = re.compile(r"^:?-+:?$")
 CITE_RE = re.compile(r"(?<![A-Za-z0-9\\])\[\s*\d+(?:(?:[,\s、]+|\s*[-–—]\s*)\d+)*\s*\]")
 
 # 参考文献标题识别（用于自动整理参考文献列表）。
-# 注意：仅匹配明确的参考文献标题，避免误伤「文献综述」等。
+# 注意：仅匹配明确的参考文献标题， 避免误伤「文献综述」等。
 REF_KW = ("参考文献", "引用文献", "参考资料", "文献参考",
-          "references", "bibliography", "reference list")
+          "references",  "bibliography", "reference list")
+
+# 行内代码：`code`
+INLINE_CODE_RE = re.compile(r"`([^`]+)`")
+# 链接：[text](url)
+LINK_RE = re.compile(r"\[([^\]]+)\]\((\S+)\)")
+# 独立成行的图片：![alt](path)
+IMAGE_LINE_RE = re.compile(r"^\s*!\[([^\]]*)\]\(([^)]+)\)\s*$")
+# 围栏代码块定界符（行首，可带语言名）
+FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})(.*)$")
 
 
 def _is_ref_heading(text: str) -> bool:
@@ -135,31 +144,69 @@ def _iter_segments(text: str, math_mode: bool = True):
 
 
 def iter_runs(text: str, math_mode: bool = True, cite_mode: bool = True):
-    """产出 (片段, 是否加粗, 是否公式, 是否引用标注)，供 add_rich / 表格单元格使用。"""
+    """产出 (片段, 是否加粗, 是否公式, 是否引用, 是否行内代码, 链接URL)。
+
+    link：None 表示普通文本，否则为 URL；is_code 为行内代码（反引号包裹）。
+    供 add_rich / 表格单元格 / 预览内联渲染使用。
+    """
     segs = []
     for content, is_math in _iter_segments(text, math_mode):
         if is_math:
-            segs.append((content, False, True, False))
+            segs.append((content, False, True, False, False, None))
         else:
-            for seg, bold in tokenize_bold(content):
-                if cite_mode:
-                    segs.extend(_split_cite(seg, bold))
-                else:
-                    segs.append((seg, bold, False, False))
+            segs.extend(_inline_runs(content, math_mode, cite_mode))
     return segs
 
 
 def _split_cite(seg: str, bold: bool):
-    """在普通片段内把「[1]」类引用标注切分为独立 run（保留原文，仅标记）。"""
+    """在普通片段内把「[1]」类引用标注切分为独立 run（保留原文，仅标记）。
+
+    返回的 run 元组固定为 6 项：(text, bold, is_math, is_cite, is_code, link)
+    """
     out = []
     last = 0
     for m in CITE_RE.finditer(seg):
         if m.start() > last:
-            out.append((seg[last:m.start()], bold, False, False))
-        out.append((m.group(0), bold, False, True))
+            out.append((seg[last:m.start()], bold, False, False, False, None))
+        out.append((m.group(0), bold, False, True, False, None))
         last = m.end()
     if last < len(seg):
-        out.append((seg[last:], bold, False, False))
+        out.append((seg[last:], bold, False, False, False, None))
+    return out
+
+
+def _apply_bold_cite(chunk: str, cite_mode: bool):
+    """对一段不含公式/代码/链接的普通文本做「加粗 + 引用」切分，返回 6 元组列表。"""
+    res = []
+    for seg, bold in tokenize_bold(chunk):
+        if cite_mode:
+            res.extend(_split_cite(seg, bold))
+        else:
+            res.append((seg, bold, False, False, False, None))
+    return res
+
+
+def _inline_runs(text: str, math_mode: bool, cite_mode: bool):
+    """把一段普通（非公式）文本切分为内联 run：(text, bold, is_math, is_cite, is_code, link)。
+
+    link：None 表示普通文本；否则为 URL 字符串（text 为链接标签）。
+    is_code：行内代码（反引号包裹），内容按字面呈现，不再做加粗/引用处理。
+    """
+    TOKEN_RE = re.compile(r"`([^`]+)`"                       # 行内代码
+                          r"|\[([^\]]+)\]\((\S+)\)")        # 链接 [text](url)
+    out = []
+    pos = 0
+    for m in TOKEN_RE.finditer(text):
+        if m.start() > pos:
+            out.extend(_apply_bold_cite(text[pos:m.start()], cite_mode))
+        if m.group(1) is not None:
+            # 行内代码：内容原样，不处理加粗/引用
+            out.append((m.group(1), False, False, False, True, None))
+        else:
+            out.append((m.group(2), False, False, False, False, m.group(3)))  # 链接
+        pos = m.end()
+    if pos < len(text):
+        out.extend(_apply_bold_cite(text[pos:], cite_mode))
     return out
 
 
@@ -319,6 +366,39 @@ def _parse_table(lines: list[str], i: int, n: int):
 # 结构解析
 # ---------------------------------------------------------------------------
 
+def _parse_nested_list(lines: list[str], i: int, n: int):
+    """从 i 开始解析一段（可能嵌套的）列表，返回 (block_or_None, 下一索引)。
+
+    返回 block：{'type':'list', 'items':[(level, ordered, text), ...]}
+    level 以首个列表项缩进为基准，每 2 个空格算一级；ordered 标记该项是否为有序。
+    """
+    items = []  # (indent, ordered, text)
+    while i < n:
+        line = lines[i]
+        if not line.strip():
+            break
+        # 列表区域遇到 表格/公式/图片/分隔线 即结束
+        if FENCE_RE.match(line.strip()) or line.strip().startswith("$$") \
+                or line.strip().startswith("\\["):
+            break
+        if _is_table_start(lines, i, n):
+            break
+        bm = BULLET_RE.match(line)
+        om = ORDERED_RE.match(line)
+        if not (bm or om):
+            break
+        indent = len(line) - len(line.lstrip())
+        text = (bm.group(2) if bm else om.group(2)).strip()
+        items.append((indent, bool(om), text))
+        i += 1
+    if not items:
+        return None, i
+    base = min(ind for ind, _, _ in items)
+    items = [(max(0, (ind - base) // 2), ordered, text)
+             for ind, ordered, text in items]
+    return {"type": "list", "items": items}, i
+
+
 def _looks_like_heading(line: str, smart: bool, next_line: str) -> tuple[bool, int]:
     """返回 (是否标题, 级别)。普通文本的智能识别仅在 smart=True 时启用。"""
     if not line.strip():
@@ -377,6 +457,9 @@ def parse_document(text: str, smart_heading: bool = True) -> list[dict]:
       {'type':'list',      'ordered':bool, 'items':[...]}
       {'type':'table',     'header':[...], 'aligns':[...], 'rows':[[...], ...]}
       {'type':'math',      'display':True, 'text':...}   # 块级公式（LaTeX 源码）
+      {'type':'code',      'text':..., 'lang':...}        # 围栏代码块（原样保留）
+      {'type':'image',     'alt':..., 'src':...}          # 独立成行图片
+      {'type':'list',      'items':[(level, ordered, text), ...]}  # 支持嵌套
       {'type':'reference', 'entries':[...]}              # 参考文献条目（位于「参考文献」标题下）
       {'type':'hr'}
     """
@@ -441,7 +524,35 @@ def parse_document(text: str, smart_heading: bool = True) -> list[dict]:
             blocks.append(block)
             continue
 
-        # 列表项（无序）
+        # 围栏代码块 ``` 或 ~~~（独立于公式；多行，原样保留为代码块）
+        fm = FENCE_RE.match(stripped)
+        if fm and not stripped.startswith("$$") and not stripped.startswith("\\["):
+            fence_char = fm.group(1)[ 0]
+            lang = fm.group(2).strip()
+            j = i + 1
+            inner = []
+            while j < n:
+                ls = lines[j].strip()
+                if FENCE_RE.match(ls) and ls.startswith(fence_char):
+                    break
+                inner.append(lines[j])
+                j += 1
+            flush_para(); flush_list()
+            blocks.append({"type": "code", "text": "\n".join(inner).rstrip("\n"),
+                           "lang": lang})
+            i = j + 1
+            continue
+
+        # 独立成行的图片 ![alt](path)
+        im = IMAGE_LINE_RE.match(line)
+        if im:
+            flush_para(); flush_list()
+            blocks.append({"type": "image", "alt": im.group(1),
+                           "src": im.group(2).strip()})
+            i += 1
+            continue
+
+        # 列表项（无序，且在参考文献区 -> 视为参考文献条目）
         bm = BULLET_RE.match(line)
         if bm:
             flush_para()
@@ -449,36 +560,40 @@ def parse_document(text: str, smart_heading: bool = True) -> list[dict]:
                 blocks.append({"type": "reference", "entries": [bm.group(2).strip()]})
                 i += 1
                 continue
-            list_ordered = False
-            list_buf.append(bm.group(2).strip())
-            i += 1
+            block, i = _parse_nested_list(lines, i, n)
+            if block:
+                blocks.append(block)
             continue
 
-        # 有序项：仅当连续出现多个时才作为有序列表，否则当作编号标题
+        # 有序项：连续多个（或缩进嵌套）时作为有序列表；单行编号 -> 落到标题识别
         om = ORDERED_RE.match(line)
         if om:
-            items = [om.group(2).strip()]
-            j = i + 1
-            while j < n:
-                lj = lines[j].strip()
-                if lj == "":
-                    j += 1
-                    continue
-                omj = ORDERED_RE.match(lines[j])
-                if omj:
-                    items.append(omj.group(2).strip())
-                    j += 1
-                    continue
-                break
-            if len(items) >= 2:
-                flush_para(); flush_list()
-                if in_refs:
+            if in_refs:
+                items = [om.group(2).strip()]
+                j = i + 1
+                while j < n:
+                    lj = lines[j].strip()
+                    if lj == "":
+                        j += 1
+                        continue
+                    omj = ORDERED_RE.match(lines[j])
+                    if omj:
+                        items.append(omj.group(2).strip())
+                        j += 1
+                        continue
+                    break
+                if len(items) >= 2:
+                    flush_para(); flush_list()
                     blocks.append({"type": "reference", "entries": list(items)})
-                else:
-                    blocks.append({"type": "list", "ordered": True, "items": items})
-                i = j
-                continue
-            # 单个有序行 -> 落到下方标题识别（作为编号标题）
+                    i = j
+                    continue
+                # 单行 -> 落到下方标题识别（作为编号标题）
+            else:
+                block, i = _parse_nested_list(lines, i, n)
+                if block and not (len(block["items"]) == 1 and block["items"][0][1]):
+                    blocks.append(block)
+                    continue
+                # 单行有序 -> 落到下方标题识别（作为编号标题）
 
         # 整行纯公式（行内风格但独立成行）：避免被误判为标题
         if _line_is_pure_math(stripped):
@@ -674,7 +789,7 @@ def build_docx(blocks: list[dict], out_path: str, preset_name: str = "默认",
                ref_line: float = 1.5,
                body_font: str = None, head_font: str = None,
                title_font: str = None, body_size: float = None,
-               latin_font: str = None) -> None:
+               latin_font: str = None, base_dir: str = None) -> None:
     """把结构化 block 列表写成 .docx 文件。
 
     header_text: 页眉文字（留空/None 则不添加页眉）。
@@ -695,6 +810,7 @@ def build_docx(blocks: list[dict], out_path: str, preset_name: str = "默认",
     from docx.shared import Pt, RGBColor, Cm
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
 
     _base = STYLE_PRESETS.get(preset_name, STYLE_PRESETS["默认"])
     # 复制预设并以界面显式选择的字体/字号覆盖，保证「预设=快速套用、可被单独调整」
@@ -745,7 +861,8 @@ def build_docx(blocks: list[dict], out_path: str, preset_name: str = "默认",
         st.element.rPr.rFonts.set(qn("w:eastAsia"), fname)
 
     def add_rich(paragraph, text):
-        for seg, bold, is_math, is_cite in iter_runs(text, math_mode=True, cite_mode=cite_sup):
+        for seg, bold, is_math, is_cite, is_code, link in iter_runs(
+                text, math_mode=True, cite_mode=cite_sup):
             if not seg:
                 continue
             if is_math:
@@ -755,6 +872,12 @@ def build_docx(blocks: list[dict], out_path: str, preset_name: str = "默认",
                     run.italic = True
                 run.font.name = preset["latin_font"]
                 run._element.rPr.rFonts.set(qn("w:eastAsia"), preset["body_font"])
+            elif is_code:
+                run = paragraph.add_run(seg)
+                run.font.name = "Consolas"
+                run._element.rPr.rFonts.set(qn("w:eastAsia"), "宋体")
+            elif link:
+                _add_hyperlink(paragraph, seg, link, preset)
             else:
                 run = paragraph.add_run(seg)
                 run.bold = bold
@@ -782,10 +905,38 @@ def build_docx(blocks: list[dict], out_path: str, preset_name: str = "默认",
             p = doc.add_paragraph()
             p.add_run("—" * 18).font.color.rgb = RGBColor(0x00, 0x00, 0x00)
         elif t == "list":
-            style = "List Number" if b.get("ordered") else "List Bullet"
-            for item in b["items"]:
-                p = doc.add_paragraph(style=style)
+            for level, ordered, item in b["items"]:
+                style_name = "List Number" if ordered else "List Bullet"
+                p = doc.add_paragraph(style=style_name)
+                # python-docx 的 paragraph_format.level 在该版本无效，手动注入 numPr：
+                # 沿用样式的 numId，并按层级写入 ilvl，实现真正的多级嵌套列表。
+                pPr = p._p.get_or_add_pPr()
+                numPr = pPr.find(qn("w:numPr"))
+                if numPr is None:
+                    numPr = OxmlElement("w:numPr")
+                    pPr.append(numPr)
+                ilvl = OxmlElement("w:ilvl")
+                ilvl.set(qn("w:val"), str(level))
+                numPr.append(ilvl)
+                if numPr.find(qn("w:numId")) is None:
+                    st = doc.styles[style_name]
+                    spPr = st.element.find(qn("w:pPr"))
+                    if spPr is not None:
+                        snum = spPr.find(qn("w:numPr"))
+                        if snum is not None and snum.find(qn("w:numId")) is not None:
+                            nid = OxmlElement("w:numId")
+                            nid.set(qn("w:val"),
+                                    snum.find(qn("w:numId")).get(qn("w:val")))
+                            numPr.append(nid)
                 add_rich(p, item)
+        elif t == "code":
+            _add_code(doc, b, preset)
+        elif t == "image":
+            try:
+                _add_image(doc, b, preset, base_dir)
+            except Exception:
+                p = doc.add_paragraph()
+                add_rich(p, "[图片] " + (b.get("alt") or b.get("src") or ""))
         elif t == "math":
             _add_math_block(doc, b, preset, math_pretty)
         elif t == "table":
@@ -954,21 +1105,30 @@ def _add_table(doc, b, preset, math_pretty: bool = True, cite_sup: bool = True):
             for rr in list(p.runs):
                 rr._element.getparent().remove(rr._element)
             _align_para(p, aligns[idx] if idx < len(aligns) else None)
-            for seg, bold, is_math, is_cite in iter_runs(r[idx], math_mode=True, cite_mode=cite_sup):
+            for seg, bold, is_math, is_cite, is_code, link in iter_runs(
+                    r[idx], math_mode=True, cite_mode=cite_sup):
                 if not seg:
                     continue
+                run = None
                 if is_math:
                     disp = _strip_math_delim(seg) if math_pretty else seg
                     run = p.add_run(disp)
                     if math_pretty:
                         run.italic = True
+                    run.font.name = preset["latin_font"]
+                    run._element.rPr.rFonts.set(qn("w:eastAsia"), preset["body_font"])
+                elif is_code:
+                    run = p.add_run(seg)
+                    run.font.name = "Consolas"
+                    run._element.rPr.rFonts.set(qn("w:eastAsia"), "宋体")
+                elif link:
+                    _add_hyperlink(p, seg, link, preset)
                 else:
                     run = p.add_run(seg)
                     run.bold = bold
-                run.font.name = preset["latin_font"]
-                run.font.size = Pt(body_size)
-                run._element.rPr.rFonts.set(qn("w:eastAsia"), preset["body_font"])
-                if is_cite:
+                    run.font.name = preset["latin_font"]
+                    run._element.rPr.rFonts.set(qn("w:eastAsia"), preset["body_font"])
+                if run is not None and is_cite:
                     run.font.superscript = True
 
 
@@ -992,6 +1152,113 @@ def _add_math_block(doc, b, preset, math_pretty: bool = True):
         run._element.rPr.rFonts.set(qn("w:eastAsia"), preset["body_font"])
         if k < len(lines) - 1:
             run.add_break()
+
+
+def _add_hyperlink(paragraph, text: str, url: str, preset: dict):
+    """在段落内插入超链接（外部 URL）。导出全黑逻辑会把颜色统一处理，这里仅加下划线区分。"""
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+
+    part = paragraph.part
+    r_id = part.relate_to(
+        url, "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink",
+        is_external=True)
+    hyperlink = OxmlElement("w:hyperlink")
+    hyperlink.set(qn("r:id"), r_id)
+    run = OxmlElement("w:r")
+    rPr = OxmlElement("w:rPr")
+    u = OxmlElement("w:u")
+    u.set(qn("w:val"), "single")
+    rPr.append(u)
+    rFonts = OxmlElement("w:rFonts")
+    rFonts.set(qn("w:ascii"), preset["latin_font"])
+    rFonts.set(qn("w:hAnsi"), preset["latin_font"])
+    rFonts.set(qn("w:eastAsia"), preset["body_font"])
+    rPr.append(rFonts)
+    t = OxmlElement("w:t")
+    t.text = text
+    run.append(rPr)
+    run.append(t)
+    hyperlink.append(run)
+    paragraph._p.append(hyperlink)
+
+
+def _add_code(doc, b, preset):
+    """渲染围栏代码块：等宽字体、保留换行、浅灰底。"""
+    from docx.shared import Pt
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+
+    text = b.get("text", "") or ""
+    p = doc.add_paragraph()
+    p.paragraph_format.left_indent = Pt(12)
+    p.paragraph_format.space_after = Pt(6)
+    p.paragraph_format.space_before = Pt(4)
+    run = p.add_run()
+    run.font.name = "Consolas"
+    run._element.rPr.rFonts.set(qn("w:eastAsia"), "宋体")
+    run.font.size = Pt(max(9, preset["body_size"] - 1))
+    lines = text.split("\n")
+    for k, line in enumerate(lines):
+        if k > 0:
+            run.add_break()
+        run.add_text(line)
+    # 浅灰底
+    _shade(p, "F2F2F2")
+
+
+def _shade(paragraph, hex_color: str):
+    """给段落加底纹（代码块背景）。"""
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+
+    pPr = paragraph._p.get_or_add_pPr()
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:color"), "auto")
+    shd.set(qn("w:fill"), hex_color)
+    pPr.append(shd)
+
+
+def _add_image(doc, b, preset, base_dir=None):
+    """嵌入图片：本地路径（相对 base_dir 或绝对）优先；http(s) 尝试下载；失败抛异常。"""
+    from docx.shared import Cm
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    import os
+
+    src = (b.get("src") or "").strip()
+    alt = b.get("alt", "") or ""
+    if not src:
+        raise ValueError("empty src")
+    path = src
+    if src.startswith("http://") or src.startswith("https://"):
+        import tempfile, urllib.request
+        suf = os.path.splitext(src)[1].split("?")[0] or ".png"
+        tmp = tempfile.mktemp(suffix=suf)
+        urllib.request.urlretrieve(src, tmp)
+        path = tmp
+    elif base_dir and not os.path.isabs(path):
+        cand = os.path.join(base_dir, path)
+        if os.path.exists(cand):
+            path = cand
+    if not os.path.exists(path):
+        raise FileNotFoundError(path)
+    # 等比缩放到最大 16cm 宽
+    from PIL import Image as PILImage
+    with PILImage.open(path) as im:
+        w, h = im.size
+    width_cm = w / 96.0 * 2.54
+    if width_cm > 16:
+        width_cm = 16.0
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.add_run().add_picture(path, width=Cm(width_cm))
+    if alt:
+        cap = doc.add_paragraph()
+        cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        r = cap.add_run(alt)
+        r.font.size = Pt(max(8, preset["body_size"] - 1))
+        r.italic = True
 
 
 def _add_references(doc, b, preset, ref_auto: bool, ref_style: str,
@@ -1189,7 +1456,7 @@ def format_text_to_docx(text: str, out_path: str, preset_name: str = "默认",
                         ref_line: float = 1.5,
                         body_font: str = None, head_font: str = None,
                         title_font: str = None, body_size: float = None,
-                        latin_font: str = None) -> list[dict]:
+                        latin_font: str = None, base_dir: str = None) -> list[dict]:
     """一站式：文本 -> 解析 -> docx，返回解析出的 blocks（供预览）。"""
     blocks = parse_document(text, smart_heading=smart_heading)
     build_docx(blocks, out_path, preset_name=preset_name, auto_toc=auto_toc,
@@ -1200,7 +1467,7 @@ def format_text_to_docx(text: str, out_path: str, preset_name: str = "默认",
                ref_hang=ref_hang, ref_line=ref_line,
                body_font=body_font, head_font=head_font,
                title_font=title_font, body_size=body_size,
-               latin_font=latin_font)
+               latin_font=latin_font, base_dir=base_dir)
     return blocks
 
 

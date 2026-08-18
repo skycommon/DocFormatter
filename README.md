@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.14](https://img.shields.io/badge/python-3.14-blue.svg)](https://www.python.org)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6.svg)](#-快速开始)
-[![Release v1.0.2](https://img.shields.io/badge/release-v1.0.2-brightgreen.svg)](https://github.com/skycommon/DocFormatter/releases)
+[![Release v1.0.3](https://img.shields.io/badge/release-v1.0.3-brightgreen.svg)](https://github.com/skycommon/DocFormatter/releases)
 
 ![主界面](docs/screenshot-main.png)
 
@@ -51,6 +51,13 @@ DocFormatter 是一款**完全离线**的 Windows 桌面排版工具，专为需
 - ✅ 参考文献样式：GB/T 7714 顺序编码制 + 纯数字序号
 - ✅ 标题层级（一级 / 二级 / 三级 / 正文）
 
+### Markdown 语法（v1.0.3 新增）
+- ✅ 围栏代码块 ` ``` ` 与行内代码 `` `code` ``：等宽字体 + 浅灰底保留原样
+- ✅ 超链接 `[文本](URL)`：导出为可点击超链接
+- ✅ 图片 `![描述](路径)`：嵌入本地 / 网络图片（相对路径基于导入文件目录）
+- ✅ 嵌套列表：按缩进层级生成多级有序 / 无序列表
+- ✅ 预览表格列宽按字体实测宽度计算，兼容全角标点
+
 ### 工程
 - ✅ **完全离线**：模型 / 资源全部内置，无需联网
 - ✅ **单文件 exe**：~18 MB，启动 < 2 秒，常驻 < 80 MB
@@ -68,7 +75,7 @@ DocFormatter 是一款**完全离线**的 Windows 桌面排版工具，专为需
 
 ### 普通用户（下载即用）
 
-1. 前往 [Releases · v1.0.2](https://github.com/skycommon/DocFormatter/releases/tag/v1.0.2)  下载 `DocFormatter.exe`
+1. 前往 [Releases · v1.0.3](https://github.com/skycommon/DocFormatter/releases/tag/v1.0.3)  下载 `DocFormatter.exe`
 2. 双击运行（首次启动约 1 秒）
 3. 主界面 → 拖入 `.txt` / `.md` 文件 → 选择预设 → 点击「一键整理」 → 选择导出位置
 

@@ -5,6 +5,16 @@ All notable changes to DocFormatter are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2026-08-18
+
+### Added · 新增功能
+
+- **代码块支持**：围栏代码块 ` ``` ` 与行内代码 `` `code` `` 导出为等宽字体 + 浅灰底，保留原样与换行
+- **超链接支持**：Markdown `[文本](URL)` 导出为可点击超链接（加下划线）
+- **图片嵌入**：`![描述](路径)` 支持嵌入本地（相对导入目录或绝对）与网络图片，自动等比缩放到最大 16cm 宽
+- **嵌套列表**：按缩进层级生成多级有序 / 无序列表（每 2 空格一级）
+- **预览表格列宽修正**：改用字体实际像素宽度测量，兼容全角标点，不再偏窄
+
 ## [1.0.2] - 2026-08-18
 
 ### Fixed · 修复与体验提升

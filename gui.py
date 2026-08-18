@@ -18,7 +18,7 @@ from formatter import STYLE_PRESETS, CIRCLED
 from i18n import t
 
 # 单一版本常量（避免各处版本号四分五裂）
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.0.3"
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -624,8 +624,10 @@ class App:
                          lmargin1=14, lmargin2=26, spacing1=1, spacing3=2)
         pv.tag_configure("hr", font=(bf, b), foreground=BLACK)
         pv.tag_configure("mono", font=("Consolas", 10), foreground=BLACK)
-        pv.tag_configure("monohead", font=("Consolas", 10, "bold"),
+        pv.tag_configure("monohead", font=("Consolas", 10,  "bold"),
                          foreground=BLACK)
+        pv.tag_configure("code", font=("Consolas", max(9, b - 1)), foreground=BLACK)
+        pv.tag_configure("link", font=(bf, b), foreground="#1a0dab", underline=True)
         pv.tag_configure("center", justify="center")
 
     # ------------------------------------------------------------ 功能
@@ -683,10 +685,23 @@ class App:
             elif t == "hr":
                 pv.insert("end", "─" * 28 + "\n\n", "hr")
             elif t == "list":
-                for k, it in enumerate(b["items"]):
-                    prefix = f"{k + 1}. " if b.get("ordered") else "• "
-                    self._preview_inline(pv, prefix + it + "\n", "list")
+                counters = {}
+                for level, ordered, text in b["items"]:
+                    counters[level] = counters.get(level, 0) + 1
+                    for deeper in [k for k in counters if k > level]:
+                        counters[deeper] = 0
+                    indent = "    " * level
+                    prefix = (f"{counters[level]}. " if ordered else "• ")
+                    self._preview_inline(pv, indent + prefix + text + "\n", "list")
                 pv.insert("end", "\n")
+            elif t == "code":
+                for line in (b.get("text") or "").split("\n"):
+                    pv.insert("end", line + "\n", "mono")
+                pv.insert("end", "\n")
+            elif t == "image":
+                alt = b.get("alt") or ""
+                src = b.get("src") or ""
+                pv.insert("end", f"[图片] {alt}  ({src})\n\n", "body")
             elif t == "math":
                 for line in (b.get("text") or "").split("\n"):
                     pv.insert("end", line + "\n", "ital")
@@ -720,14 +735,18 @@ class App:
         pv.configure(state="disabled")
 
     def _preview_inline(self, pv, text, base_tag):
-        """段落内联渲染：加粗 / 公式斜体 / 引用上标。"""
-        for seg, bold, is_math, is_cite in formatter.iter_runs(
+        """段落内联渲染：加粗 / 公式斜体 / 引用上标 / 行内代码 / 超链接。"""
+        for seg, bold, is_math, is_cite, is_code, link in formatter.iter_runs(
                 text, math_mode=True, cite_mode=self.cite_var.get()):
             if not seg:
                 continue
             if is_math:
                 disp = formatter._strip_math_delim(seg) if self.math_var.get() else seg
                 pv.insert("end", disp, "ital")
+            elif is_code:
+                pv.insert("end", seg, "code")
+            elif link:
+                pv.insert("end", seg, "link")
             elif is_cite:
                 pv.insert("end", seg, "sup")
             elif bold:
@@ -736,7 +755,8 @@ class App:
                 pv.insert("end", seg, base_tag)
 
     def _preview_table(self, pv, b):
-        """用等宽 + 制表线近似渲染表格。"""
+        """用等宽 + 制表线近似渲染表格（列宽按字体实际像素宽度测量，兼容全角字符）。"""
+        import tkinter.font as tkfont
         header = list(b.get("header", []))
         rows = [list(r) for r in b.get("rows", [])]
         n_cols = max(len(header), max((len(r) for r in rows), default=0), 1)
@@ -750,22 +770,36 @@ class App:
         header = norm(header)
         rows = [norm(r) for r in rows]
 
-        def w(s):
-            return sum(2 if ord(ch) > 0x2E80 else 1 for ch in s)
+        # 用表格字体（Consolas）真实测量像素宽度，避免全角标点/汉字估算偏窄
+        f = tkfont.Font(family="Consolas", size=10)
+        space_w = max(1, f.measure(" "))
+        bar_w = max(1, f.measure("─"))
+        def measure(s):
+            return max(1, f.measure(s))
 
-        widths = [max([w(header[c])] + [w(r[c]) for r in rows], default=2)
-                  for c in range(n_cols)]
+        col_w = []
+        for c in range(n_cols):
+            wmax = measure(header[c])
+            for r in rows:
+                wmax = max(wmax, measure(r[c]))
+            col_w.append(wmax + 6)  # 预留左右内边距
+
+        def pad(s, c):
+            need = col_w[c] - measure(s)
+            return s + " " * max(0, round(need / space_w))
 
         def fmt(cells):
-            parts = []
+            return "│ " + " │ ".join(pad(cells[c], c) for c in range(n_cols)) + " │"
+
+        def fmt_sep():
+            bars = []
             for c in range(n_cols):
-                s = cells[c]
-                parts.append(s + " " * max(widths[c] - w(s), 0))
-            return "│ " + " │ ".join(parts) + " │"
+                nbar = max(1, round(col_w[c] / bar_w))
+                bars.append("─" * nbar)
+            return "├─" + "─┼─".join(bars) + "─┤"
 
         pv.insert("end", fmt(header) + "\n", "monohead")
-        sep = "├─" + "─┼─".join("─" * widths[c] for c in range(n_cols)) + "─┤"
-        pv.insert("end", sep + "\n", "mono")
+        pv.insert("end", fmt_sep() + "\n", "mono")
         for r in rows:
             pv.insert("end", fmt(r) + "\n", "mono")
 
@@ -784,6 +818,7 @@ class App:
         self.text.delete("1.0", "end")
         self.text.insert("1.0", data)
         self.sample_lang = None  # 已导入，不再是示例
+        self.source_dir = os.path.dirname(path)  # 用于解析图片相对路径
         self.refresh_outline()
         self.set_status(t("status_imported", self.lang).format(name=os.path.basename(path)))
 
@@ -840,7 +875,8 @@ class App:
                 head_font=self.head_font_var.get(),
                 title_font=self.title_font_var.get(),
                 body_size=size_pt(self.body_size_var.get()),
-                latin_font=self.latin_font_var.get())
+                latin_font=self.latin_font_var.get(),
+                base_dir=getattr(self, "source_dir", None))
             self.blocks = blocks
             self.populate_outline_from(blocks)
             messagebox.showinfo(t("info_done", self.lang),
@@ -890,7 +926,8 @@ class App:
                 head_font=self.head_font_var.get(),
                 title_font=self.title_font_var.get(),
                 body_size=size_pt(self.body_size_var.get()),
-                latin_font=self.latin_font_var.get())
+                latin_font=self.latin_font_var.get(),
+                base_dir=getattr(self, "source_dir", None))
             if docx_to_pdf(tmp, path):
                 messagebox.showinfo(t("info_done", self.lang),
                                     t("info_done_msg", self.lang).format(path=path, n=len(self.blocks)))
@@ -1354,8 +1391,9 @@ class App:
                     body_font=self.body_font_var.get(),
                     head_font=self.head_font_var.get(),
                     title_font=self.title_font_var.get(),
-                    body_size=size_pt(self.body_size_var.get()),
-                    latin_font=self.latin_font_var.get())
+                body_size=size_pt(self.body_size_var.get()),
+                latin_font=self.latin_font_var.get(),
+                base_dir=os.path.dirname(fpath))
                 self._batch_log_q.put(("ok", fpath, ""))
                 self._batch_ok += 1
             except Exception as e:
