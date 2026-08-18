@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.14](https://img.shields.io/badge/python-3.14-blue.svg)](https://www.python.org)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6.svg)](#-快速开始)
-[![Release v1.0.0](https://img.shields.io/badge/release-v1.0.0-brightgreen.svg)](https://github.com/skycommon/DocFormatter/releases)
+[![Release v1.0.2](https://img.shields.io/badge/release-v1.0.2-brightgreen.svg)](https://github.com/skycommon/DocFormatter/releases)
 
 ![主界面](docs/screenshot-main.png)
 
@@ -57,7 +57,7 @@ DocFormatter 是一款**完全离线**的 Windows 桌面排版工具，专为需
 - ✅ **多尺寸应用图标**：16/24/32/48/64/128/256 全分辨率，桌面 / 任务栏清晰可见
 - ✅ **桌面快捷方式生成**：手写 MS-SHELLINK 二进制，绕过沙箱 COM 限制
 - ✅ **导出 PDF**：借助本机 Word / WPS
-- ✅ **主题**：跟随系统 / 浅色 / 深色 三档
+- ✅ **主题**：内置浅色主题（与 IDE 标题栏一致），文字全黑、背景全白
 - ✅ **中英双语 UI**：运行时实时切换
 - ✅ **配置导入 / 导出**：JSON 跨电脑迁移
 - ✅ **常用导出位置**：可勾选的快速目录
@@ -68,7 +68,7 @@ DocFormatter 是一款**完全离线**的 Windows 桌面排版工具，专为需
 
 ### 普通用户（下载即用）
 
-1. 前往 [Releases · v1.0.0](https://github.com/skycommon/DocFormatter/releases/tag/v1.0.0) 下载 `DocFormatter.exe`
+1. 前往 [Releases · v1.0.2](https://github.com/skycommon/DocFormatter/releases/tag/v1.0.2)  下载 `DocFormatter.exe`
 2. 双击运行（首次启动约 1 秒）
 3. 主界面 → 拖入 `.txt` / `.md` 文件 → 选择预设 → 点击「一键整理」 → 选择导出位置
 
@@ -103,27 +103,34 @@ DocFormatter.exe --version
 
 ### 配置文件
 
-程序首次运行会在 exe 同目录生成 `config.json`，可手动调整：
+程序会在 exe 同目录（onefile 模式下即 `sys.executable` 所在目录）自动生成并持久化以下文件，关闭即保留、跨电脑可迁移：
+
+- `settings.json`：仅保存西文字体偏好（如 `{"western_font": "Times New Roman"}`）。
+- `export_locations.json`：常用导出位置列表（路径 + 是否勾选）。
+
+如果想把**全部排版设置**（预设、字体、页脚、参考文献样式等）一次性迁移到另一台电脑，请使用主界面 → 排版选项里的「导出配置」生成 JSON，在新机器「导入配置」即可。该文件结构示例：
 
 ```json
 {
-  "preset": "default",
-  "language": "zh",
-  "theme": "system",
-  "margins_cm": {
-    "top": 2.54,
-    "bottom": 2.54,
-    "left": 3.18,
-    "right": 3.18
-  },
-  "enable_math": true,
-  "enable_citation": true,
-  "enable_header_footer": false,
-  "enable_toc": false
+  "app": "DocFormatter",
+  "version": "1.0.2",
+  "config": {
+    "preset": "默认",
+    "language": "zh",
+    "auto_toc": false,
+    "math_pretty": true,
+    "cite_sup": true,
+    "ref_auto": true,
+    "ref_style": "gb7714",
+    "body_font": "宋体",
+    "head_font": "黑体",
+    "title_font": "黑体",
+    "body_size": 11,
+    "western_font": "Times New Roman",
+    "export_locations": []
+  }
 }
 ```
-
-`config.json` 与 `export_locations.json` 持久化在 exe 同目录（onefile 模式下的 `sys.executable` 路径），关闭即保留、跨电脑可迁移。
 
 ---
 

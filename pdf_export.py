@@ -16,9 +16,11 @@ def docx_to_pdf(docx_path: str, pdf_path: str) -> bool:
     pdf_path = os.path.abspath(pdf_path)
 
     # 1) Microsoft Word COM
+    # 用 DispatchEx 创建独立的新实例（而非复用现有 Word 进程），
+    # 这样退出时 Quit() 只关掉这个临时实例，不会殃及用户已打开的文档。
     try:
         import win32com.client
-        word = win32com.client.Dispatch("Word.Application")
+        word = win32com.client.DispatchEx("Word.Application")
         word.Visible = False
         doc = word.Documents.Open(docx_path)
         try:

@@ -5,6 +5,22 @@ All notable changes to DocFormatter are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] - 2026-08-18
+
+### Fixed · 修复与体验提升
+
+- **引用标注误判修复**：`\sqrt[3]{x}`、`\cite[page]{key}`、`变量x[1]` 中的方括号不再被误判为引用上标；中文后的 `[1]` / `[2,3]` 仍正确识别为顺序编码引用（改为仅排除 ASCII 字母/数字/反斜杠前的 `[`）
+- **导出 PDF 不再误关用户 Word**：Word COM 改用独立的新实例（DispatchEx），导出后退出不影响用户已打开的文档
+- **预览所见即所得**：切换字体 / 字号 / 预设后，右侧预览立即刷新，不再停留在旧字体
+- **移除冗余按钮**：删除与「导出 Word」功能重复的「一键排版导出」按钮
+- **补齐 `--version`**：命令行 `DocFormatter.exe --version` 可查看版本（此前仅为文档承诺）
+
+### Changed
+
+- 统一版本号：关于对话框、配置导出、徽标、下载链接、文档 全部对齐到 v1.0.2
+- 修正 README「配置文件」章节（`config.json` 实为 `settings.json` + `export_locations.json`，并补充「导出配置」真实结构）
+- 修正 README 主题说明（当前为内置浅色主题，已移除主题三档下拉）
+
 ## [1.0.1] - 2026-08-15
 
 ### Changed · 导出强制纯黑

@@ -16,6 +16,9 @@ import i18n
 from formatter import STYLE_PRESETS, CIRCLED
 from i18n import t
 
+# 单一版本常量（避免各处版本号四分五裂）
+APP_VERSION = "1.0.2"
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 # 打包成单文件 exe 后，__file__ 会指向临时解压目录；用户设置必须落在 exe 真实所在
@@ -152,17 +155,14 @@ class App:
         self.w_refresh.pack(side="left", padx=4)
         self.w_export = ttk.Button(top, text="", command=self.export_docx)
         self.w_export.pack(side="left", padx=4)
-        self.w_export_all = ttk.Button(top, text="", command=self.export_docx)
-        self.w_export_all.pack(side="left", padx=4)
         self.w_export_pdf = ttk.Button(top, text="", command=self.export_pdf)
         self.w_export_pdf.pack(side="left", padx=4)
         self.w_batch = ttk.Button(top, text="", command=self.open_batch)
         self.w_batch.pack(side="left", padx=4)
         self.w_about = ttk.Button(top, text="", command=self.show_about)
         self.w_about.pack(side="right", padx=4)
-        for w, key in ((self.w_import, "btn_import"), (self.w_clear, "btn_clear"),
+        for w,  key in ((self.w_import, "btn_import"), (self.w_clear, "btn_clear"),
                        (self.w_refresh, "btn_refresh"), (self.w_export, "btn_export"),
-                       (self.w_export_all, "btn_export_all"),
                        (self.w_export_pdf, "btn_export_pdf"), (self.w_batch, "btn_batch"),
                        (self.w_about, "btn_about")):
             self._tr.append((w, key))
@@ -247,6 +247,7 @@ class App:
         self.cb_body_font = ttk.Combobox(row_bf, textvariable=self.body_font_var,
                                          values=FONT_OPTIONS, state="readonly", width=14)
         self.cb_body_font.pack(side="left", padx=4)
+        self.cb_body_font.bind("<<ComboboxSelected>>", self.on_font_change)
 
         # 标题字体
         row_hf = ttk.Frame(fontf)
@@ -257,6 +258,7 @@ class App:
         self.cb_head_font = ttk.Combobox(row_hf, textvariable=self.head_font_var,
                                          values=FONT_OPTIONS, state="readonly", width=14)
         self.cb_head_font.pack(side="left", padx=4)
+        self.cb_head_font.bind("<<ComboboxSelected>>", self.on_font_change)
 
         # 主标题字体
         row_tf = ttk.Frame(fontf)
@@ -267,6 +269,7 @@ class App:
         self.cb_title_font = ttk.Combobox(row_tf, textvariable=self.title_font_var,
                                           values=FONT_OPTIONS, state="readonly", width=14)
         self.cb_title_font.pack(side="left", padx=4)
+        self.cb_title_font.bind("<<ComboboxSelected>>", self.on_font_change)
 
         # 正文字号
         row_bs = ttk.Frame(fontf)
@@ -278,6 +281,7 @@ class App:
                                          values=[lab for lab, _ in SIZE_OPTIONS],
                                          state="readonly", width=14)
         self.cb_body_size.pack(side="left", padx=4)
+        self.cb_body_size.bind("<<ComboboxSelected>>", self.on_font_change)
 
         # 西文字体（英文/数字/罗马字符；国标默认 Times New Roman）
         row_wf = ttk.Frame(fontf)
@@ -289,6 +293,7 @@ class App:
                                             values=WESTERN_FONT_OPTIONS,
                                             state="readonly", width=14)
         self.cb_western_font.pack(side="left", padx=4)
+        self.cb_western_font.bind("<<ComboboxSelected>>", self.on_font_change)
 
         # 配置导入/导出行
         row_cfg = ttk.Frame(opt)
@@ -530,8 +535,14 @@ class App:
         self.head_font_var.set(p["head_font"])
         self.title_font_var.set(p["title_font"])
         self.body_size_var.set(size_label(p["body_size"]))
+        # 预设改变了字体/字号，立即刷新预览（所见即所得）
+        self.render_preview()
         if getattr(self, "_batch_win", None) and self._batch_win.winfo_exists():
             self._batch_update_summary()
+
+    def on_font_change(self, event=None):
+        """字体 / 字号下拉改变时，立即把新字体套用到右侧预览。"""
+        self.render_preview()
 
     def on_footer(self, event=None):
         vals = [t("footer_" + m, self.lang) for m in self.footer_modes]
@@ -651,6 +662,8 @@ class App:
         pv = getattr(self, "preview", None)
         if pv is None:
             return
+        # 字体/字号下拉改变后，先把最新字体套用到各标签（所见即所得）
+        self._configure_preview_tags()
         try:
             pv.configure(state="normal")
         except Exception:
@@ -904,7 +917,7 @@ class App:
     def _current_config(self) -> dict:
         return {
             "app": "DocFormatter",
-            "version": "1.1.0",
+            "version": APP_VERSION,
             "config": {
                 "smart_heading": self.smart_var.get(),
                 "auto_toc": self.toc_var.get(),
@@ -1392,6 +1405,10 @@ class App:
 
 
 def main():
+    # 支持 `DocFormatter.exe --version` 查看版本（README 已记录该用法）
+    if "--version" in sys.argv[1:]:
+        print(f"DocFormatter {APP_VERSION}")
+        return
     root = tk.Tk()
     App(root)
     # 启动时最大化（全屏窗口，带标题栏，可拖动边缘缩小到普通窗口大小）。

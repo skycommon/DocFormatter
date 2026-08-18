@@ -52,10 +52,11 @@ BOLD_TOKEN_RE = re.compile(
 # 表格分隔单元格（如 --- / :-- / :-: / --:）
 TABLE_SEP_CELL_RE = re.compile(r"^:?-+:?$")
 
-# 正文引用标注（论文顺序编码制）：[1] / [1,2] / [1-3] / [1, 2-4]
-# 仅匹配「[数字…]」形态——公式片段已在 _iter_segments 中被隔离（不会误伤 \sqrt[3]{x}），
-# 且 [图1] / [选项A] 这类带文字的方括号标签因非纯数字而不被匹配。
-CITE_RE = re.compile(r"\[\s*\d+(?:(?:[,\s、]+|\s*[-–—]\s*)\d+)*\s*\]")
+# 正文引用标注（论文顺序编码制）：[1] / [1,2] / [1-3] / [1, 2- 4]
+# 仅匹配「[数字…]」形态——且 **不能** 紧跟在 ASCII 字母/数字/反斜杠之后，
+# 避免误伤 LaTeX 命令：\sqrt[3]{x} 的 [3]、\cite[page]{key} 的 [page]。
+# （Python 的 \w 包含中文，故这里仅排除 ASCII 字母数字+\，保证中文后面的 [1] 仍为引用。）
+CITE_RE = re.compile(r"(?<![A-Za-z0-9\\])\[\s*\d+(?:(?:[,\s、]+|\s*[-–—]\s*)\d+)*\s*\]")
 
 # 参考文献标题识别（用于自动整理参考文献列表）。
 # 注意：仅匹配明确的参考文献标题，避免误伤「文献综述」等。
@@ -209,9 +210,12 @@ def _parse_math_block(lines: list[str], i: int, n: int):
     open_idx = text.find(open_d)
     close_idx = text.rfind(close_d)
     if open_idx == -1 or close_idx == -1 or close_idx <= open_idx:
-        inner = ""
-    else:
-        inner = text[open_idx + len(open_d): close_idx]
+        # 未闭合：退化为普通段落（只吃第一行），避免把后续正文当成公式内容吞掉
+        rest = first
+        if rest.startswith(open_d):
+            rest = rest[len(open_d):]
+        return {"type": "paragraph", "text": rest.strip()}, i + 1
+    inner = text[open_idx + len(open_d): close_idx]
     inner = inner.strip("\n")
     block = {"type": "math", "display": True, "text": inner}
     return block, j + 1
